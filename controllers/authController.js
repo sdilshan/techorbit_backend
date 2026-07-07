@@ -1,11 +1,15 @@
 import User from "../Schema/User.js";
 import bcrypt from "bcrypt";
-
-// Email validation
+import { generateAccessToken } from "../utils/jwt.js"; // Email validation
 const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
 
+const formatUserResponse = (user) => ({
+  fullname: user.personal_info.fullname,
+  username: user.personal_info.username,
+  profile_img: user.personal_info.profile_img,
+});
 
-   //Signup
+//Signup
 export const signup = async (req, res) => {
   try {
     const fullname = req.body.fullname?.trim();
@@ -114,12 +118,14 @@ export const signup = async (req, res) => {
         username,
       },
     });
-    const userResponse = user.toObject();
-    delete userResponse.personal_info.password;
+    //const userResponse = user.toObject();
+    //delete userResponse.personal_info.password;
+    const accessToken = generateAccessToken(user);
     res.status(201).json({
       success: true,
       message: "User registered successfully.",
-      user: userResponse,
+      accessToken,
+      user: formatUserResponse(user),
     });
   } catch (err) {
     res.status(500).json({
@@ -132,8 +138,26 @@ export const signup = async (req, res) => {
 // Signin
 export const signin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
+    const password = req.body.password;
 
+    // Email validation
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required.",
+      });
+    }
+
+    // Password validation
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required.",
+      });
+    }
+
+    // Find user
     const user = await User.findOne({
       "personal_info.email": email,
     });
@@ -141,24 +165,34 @@ export const signin = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message: "User not found.",
       });
     }
 
-    if (user.personal_info.password !== password) {
+    // Compare password
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      user.personal_info.password
+    );
+
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: "Incorrect password",
+        message: "Incorrect password.",
       });
     }
 
-    res.status(200).json({
+    // Generate access token
+    const accessToken = generateAccessToken(user);
+
+    return res.status(200).json({
       success: true,
-      message: "Login successful",
-      user,
+      message: "Login successful.",
+      accessToken,
+      user: formatUserResponse(user),
     });
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message,
     });
