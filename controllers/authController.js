@@ -1,6 +1,7 @@
 import User from "../Schema/User.js";
 import bcrypt from "bcrypt";
 import { generateAccessToken } from "../utils/jwt.js"; // Email validation
+import admin from "../config/firebaseAdmin.js";
 const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
 
 const formatUserResponse = (user) => ({
@@ -168,11 +169,19 @@ export const signin = async (req, res) => {
         message: "User not found.",
       });
     }
+    // Google account check
+    if (user.google_auth && !user.personal_info.password) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This account uses Google Sign-In. Please continue with Google.",
+      });
+    }
 
     // Compare password
     const isPasswordValid = await bcrypt.compare(
       password,
-      user.personal_info.password
+      user.personal_info.password,
     );
 
     if (!isPasswordValid) {
@@ -195,6 +204,75 @@ export const signin = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: err.message,
+    });
+  }
+};
+
+export const googleAuth = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    // Verify Firebase ID Token
+    const decoded = await admin.auth().verifyIdToken(token);
+
+    const email = decoded.email.toLowerCase();
+    const fullname = decoded.name;
+    const profile_img = decoded.picture;
+
+    // Check if user already exists
+    let user = await User.findOne({
+      "personal_info.email": email,
+    });
+
+    // Create new user if not found
+    if (!user) {
+      // Generate username from email
+      let username = email.split("@")[0];
+
+      let count = 0;
+      let tempUsername = username;
+
+      while (
+        await User.findOne({
+          "personal_info.username": tempUsername,
+        })
+      ) {
+        count++;
+        tempUsername = `${username}${count}`;
+      }
+
+      username = tempUsername;
+
+      // Create user
+      user = await User.create({
+        personal_info: {
+          fullname,
+          email,
+          username,
+          profile_img,
+        },
+        google_auth: true,
+      });
+    } else if (user && !user.google_auth) {
+      user.google_auth = true;
+      await user.save();
+    }
+
+    // Generate YOUR JWT
+    const accessToken = generateAccessToken(user);
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful.",
+      accessToken,
+      user: formatUserResponse(user),
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(401).json({
+      success: false,
+      message: "Google authentication failed.",
     });
   }
 };
