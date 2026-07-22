@@ -10,7 +10,7 @@ import "dotenv/config";
 import userRoutes from "./routes/user.route.js";
 import authRoutes from "./routes/auth.route.js";
 import uploadRoutes from "./routes/upload.route.js";
-
+import blogRoutes from "./routes/blog.route.js";
 const server = express();
 const PORT = 3000;
 
@@ -26,6 +26,7 @@ mongoose
 server.use("/api/user", userRoutes);
 server.use("/api/", authRoutes);
 server.use("/api", uploadRoutes);
+server.use("/api", blogRoutes);
 server.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
 });
